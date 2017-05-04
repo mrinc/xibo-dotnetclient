@@ -26,6 +26,8 @@ using System.Linq;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Windows.Forms;
+using CefSharp;
+using CefSharp.WinForms;
 
 namespace XiboClient
 {
@@ -35,7 +37,8 @@ namespace XiboClient
         private string _filePath;
         private string _localWebPath;
         private RegionOptions _options;
-        private WebBrowser _webBrowser;
+        private ChromiumWebBrowser _webBrowser;
+        private bool initedWB = false;
         private int _documentCompletedCount = 0;
         private bool _reloadOnXmdsRefresh = false;
 
@@ -63,17 +66,24 @@ namespace XiboClient
             }
 
             // Create the web view we will use
-            _webBrowser = new WebBrowser();
-            _webBrowser.DocumentCompleted += _webBrowser_DocumentCompleted;
+            if (!initedWB) {
+              initedWB = true;
+              Cef.Initialize(new CefSettings()
+              {
+                WindowlessRenderingEnabled = true
+              });
+            }
+
+            _webBrowser = new ChromiumWebBrowser();
+            _webBrowser.LoadingStateChanged += _webBrowser_DocumentCompleted;
             _webBrowser.Size = Size;
-            _webBrowser.ScrollBarsEnabled = false;
-            _webBrowser.ScriptErrorsSuppressed = true;
+            _webBrowser.Dock = DockStyle.Fill;
             _webBrowser.Visible = false;
 
             if (nativeOpen)
             {
                 // Nativate directly
-                _webBrowser.Navigate(_filePath);
+                _webBrowser.Load(_filePath);
             }
             else if (HtmlReady())
             {
@@ -81,7 +91,7 @@ namespace XiboClient
                 ReadControlMeta();
 
                 // Navigate to temp file
-                _webBrowser.Navigate(_localWebPath);
+                _webBrowser.Load(_localWebPath);
             }
             else
             {
@@ -99,12 +109,10 @@ namespace XiboClient
         /// </summary>
         /// <param name="sender"></param>
         /// <param name="e"></param>
-        void _webBrowser_DocumentCompleted(object sender, WebBrowserDocumentCompletedEventArgs e)
+        void _webBrowser_DocumentCompleted(object sender, LoadingStateChangedEventArgs args)
         {
-            _documentCompletedCount++;
-
             // Prevent double document completions
-            if (_documentCompletedCount > 1)
+            if (args.IsLoading)
                 return;
 
             // Start the timer
@@ -236,7 +244,7 @@ namespace XiboClient
                             UpdateCacheIfNecessary();
 
                             // Navigate to the file
-                            _webBrowser.Navigate(_localWebPath);
+                            _webBrowser.Load(_localWebPath);
                         }
                         else
                         {
@@ -290,7 +298,7 @@ namespace XiboClient
                         ReadControlMeta();
 
                         // Handle Navigate in here because we will not have done it during first load
-                        _webBrowser.Navigate(_localWebPath);
+                        _webBrowser.Load(_localWebPath);
                     }
                 }
             }
@@ -374,8 +382,8 @@ namespace XiboClient
                     PerformLayout();
 
                     // Detatch event and remove
-                    _webBrowser.DocumentCompleted -= _webBrowser_DocumentCompleted;
-                    _webBrowser.Navigate("about:blank");
+                    _webBrowser.LoadingStateChanged -= _webBrowser_DocumentCompleted;
+                    _webBrowser.Load("about:blank");
                     _webBrowser.Dispose();
                 }
                 catch (Exception e)
